@@ -1,0 +1,164 @@
+name: Workflow Push and Pull Request
+
+on: [push, pull_request]
+
+jobs:
+  format-check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Run black
+        uses: psf/black@26.1.0
+        with:
+          options: "--check --verbose --line-length 79 --diff"
+          src: "./src"
+
+  isort:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Prepare
+        run: |
+          pip install --upgrade pip
+          pip install "poetry>=1.0.0,<2.0.0" "poetry-dynamic-versioning>=1.0.0,<2.0.0"
+          poetry install --no-root --only static-analysis
+
+      - name: Run isort
+        run: |
+          mkdir format-reports
+          poetry run isort --check --diff --color --line-length 79 src > format-reports/isort-report.diff
+
+      - name: Archive artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: isort-artifacts
+          path: format-reports
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Prepare
+        run: |
+          pip install --upgrade pip
+          pip install "poetry>=1.0.0,<2.0.0" "poetry-dynamic-versioning>=1.0.0,<2.0.0"
+          poetry install --no-root --only static-analysis
+
+      - name: Run flake8
+        run: |
+          poetry run flake8 src
+          poetry run flake8 src --format=html --htmldir=flake8-report
+
+      - name: Archive artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: lint-artifacts
+          path: flake8-report
+
+  type-check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Prepare
+        run: |
+          pip install --upgrade pip
+          pip install "poetry>=1.0.0,<2.0.0" "poetry-dynamic-versioning>=1.0.0,<2.0.0"
+          poetry install --with static-analysis
+          mkdir type-check-reports
+
+      - name: Run mypy
+        run: poetry run mypy src --show-error-codes --pretty --install-types --non-interactive | tee type-check-reports/mypy-report.txt
+
+      - name: Archive artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: type-check-artifacts
+          path: type-check-reports
+
+  pytest:
+    runs-on: ubuntu-latest
+    needs: [format-check, lint, type-check, isort]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Prepare
+        run: |
+          pip install --upgrade pip
+          pip install "poetry>=1.0.0,<2.0.0" "poetry-dynamic-versioning>=1.0.0,<2.0.0"
+          poetry install --with test
+
+      - name: run pytest
+        run: |
+          poetry install --with test
+          poetry run pytest
+          poetry run coverage xml
+          poetry run coverage report
+
+      - name: coverage
+        uses: orgoro/coverage@v3.2
+        with:
+          coverageFile: coverage.xml
+          token: ${{ secrets.GITHUB_TOKEN }}
+          thresholdAll: 0.8
+
+      - name: Archive artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: pytest-artifacts
+          path: |
+            report.xml
+            coverage.xml
+            tests/sdk/fuzzed
+            tests/sdk/generated
+
+  example-validation:
+    runs-on: ubuntu-latest
+    needs: pytest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Prepare
+        run: |
+          pip install --upgrade pip
+          pip install "poetry>=1.0.0,<2.0.0" "poetry-dynamic-versioning>=1.0.0,<2.0.0"
+          poetry install
+
+      - name: Run validate_examples.py
+        run: |
+          poetry run python src/flync/sdk/helpers/validate_examples.py
+
+  build-documentation:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Prepare
+        run: |
+          pip install --upgrade pip
+          pip install "poetry>=1.0.0,<2.0.0" "poetry-dynamic-versioning>=1.0.0,<2.0.0"
+          cd docs
+          pwd
+          poetry install --with docs
+
+      - name: Run make html
+        run: |
+          cd docs
+          pwd
+          make html
+
+      - name: Archive artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: documentation-artifacts
+          path: docs/build/
