@@ -197,7 +197,7 @@ class FLYNCWorkspace:
 
     def __get_model_content(self, flync_model: FLYNCBaseModel, file_path):
         exclude = set()
-        for field_name, field_info in flync_model.model_fields.items():
+        for field_name, field_info in type(flync_model).model_fields.items():
             external: External | None = get_metadata(
                 field_info.metadata, External
             )
@@ -551,7 +551,7 @@ class FLYNCWorkspace:
 
     @staticmethod
     def __get_field_filename(model: FLYNCBaseModel):
-        for field, info in model.model_fields.items():
+        for field, info in type(model).model_fields.items():
             implied: Implied | None = get_metadata(info.metadata, Implied)
             if implied and implied.strategy == ImpliedStrategy.FILE_NAME:
                 return field
