@@ -50,12 +50,9 @@ def compare_yaml_files(base_folder: Path, generated_folder: Path) -> bool:
     base_keys = set(base_files.keys())
     generated_keys = set(generated_files.keys())
 
-    unexpected_added = generated_keys - base_keys
-    if len(list(unexpected_added)) > 0:
-        return False
-    
-    if len(list(base_keys - generated_keys)) > 0:
-         return False
+    unexpected_keys = generated_keys ^ base_keys
+    if unexpected_keys:
+        raise ValueError(f"Found unexpected keys ({unexpected_keys}) during the roundtrip conversion")
 
     for k in base_keys & generated_keys:
         if base_files[k] != generated_files[k]:
